@@ -1,0 +1,27 @@
+# docker/compose.yml
+services:
+  redpanda:
+    image: redpandadata/redpanda:latest
+    container_name: redpanda
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp
+      - "1"
+      - --memory
+      - "1G"
+      - --reserve-memory
+      - "0M"
+      - --node-id
+      - "0"
+      - --check=false
+      # Internal (container network) + External (host) listeners
+      - --kafka-addr
+      - internal://0.0.0.0:29092,external://0.0.0.0:9092
+      - --advertise-kafka-addr
+      - internal://redpanda:29092,external://localhost:9092
+    ports:
+      - "9092:9092"
+      - "9644:9644" # admin/metrics
+
