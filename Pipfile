@@ -4,9 +4,11 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-kafka-python = "==2.0.2"
+kafka-python = "*"
+pyarrow = "*"
 
 [dev-packages]
+pytest = "*"
 
 [requires]
 python_version = "3.11"

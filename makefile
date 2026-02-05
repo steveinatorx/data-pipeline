@@ -21,11 +21,21 @@ N_ORDERS ?= 5000
 # Kafka key strategy: order_id keeps per-order ordering within a partition
 KAFKA_KEY_FIELD ?= order_id
 
+# Consumer/Job config
+RAW_DIR ?= ./data/raw
+PARQUET_DIR ?= ./data/parquet
+CONSUMER_GROUP ?= raw-sink
+ROLL_MAX_MB ?= 64
+ROLL_MAX_SECONDS ?= 60
+ROWS_PER_FILE ?= 250000
+
 # ---------- Targets ----------
 .PHONY: help up down restart logs ps health \
         topic topics describe-topic \
         consume consume-latest \
-        venv reqs gen produce produce-small produce-big
+        venv reqs gen produce produce-small produce-big \
+        sink-raw raw-to-parquet raw-to-parquet-all \
+        test
 
 help:
 	@echo ""
@@ -42,6 +52,16 @@ help:
 	@echo "  make venv reqs"
 	@echo "  make gen (writes NDJSON to OUT)"
 	@echo "  make produce / produce-small / produce-big"
+	@echo ""
+	@echo "Consumers:"
+	@echo "  make sink-raw (Kafka -> raw NDJSON sink)"
+	@echo ""
+	@echo "Jobs:"
+	@echo "  make raw-to-parquet DATE=YYYY-MM-DD (Convert raw NDJSON -> Parquet for date)"
+	@echo "  make raw-to-parquet-all (Convert all available dates)"
+	@echo ""
+	@echo "Testing:"
+	@echo "  make test (Run all tests)"
 	@echo ""
 
 # ----- Docker -----
@@ -112,4 +132,38 @@ produce-big: reqs
 	$(PY) $(SIM) --out $(OUT) --n-orders 50000 --seed $(SEED) \
 	  --kafka-bootstrap $(KAFKA_BOOTSTRAP) --kafka-topic $(TOPIC) \
 	  --kafka-key-field $(KAFKA_KEY_FIELD)
+
+# ----- Consumers -----
+sink-raw:
+	pipenv run python consumers/kafka_to_raw.py \
+		--bootstrap $(KAFKA_BOOTSTRAP) \
+		--topic $(TOPIC) \
+		--group $(CONSUMER_GROUP) \
+		--out-dir $(RAW_DIR) \
+		--auto-offset-reset earliest \
+		--roll-max-mb $(ROLL_MAX_MB) \
+		--roll-max-seconds $(ROLL_MAX_SECONDS)
+
+# ----- Jobs -----
+raw-to-parquet:
+	@if [ -z "$(DATE)" ]; then \
+		echo "ERROR: DATE required. Usage: make raw-to-parquet DATE=2026-02-01"; \
+		exit 1; \
+	fi
+	pipenv run python jobs/raw_to_parquet.py \
+		--raw-dir $(RAW_DIR) \
+		--out-dir $(PARQUET_DIR) \
+		--date $(DATE) \
+		--rows-per-file $(ROWS_PER_FILE)
+
+raw-to-parquet-all:
+	pipenv run python jobs/raw_to_parquet.py \
+		--raw-dir $(RAW_DIR) \
+		--out-dir $(PARQUET_DIR) \
+		--all \
+		--rows-per-file $(ROWS_PER_FILE)
+
+# ----- Testing -----
+test:
+	pipenv run pytest tests/ -v
 
